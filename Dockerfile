@@ -7,8 +7,6 @@ RUN go mod download
 
 COPY . .
 
-RUN go install github.com/cespare/reflex@latest
-
 EXPOSE 4000
 
-CMD reflex -g '*.go' go run app/main.go --start-service
+CMD go run app/main.go
