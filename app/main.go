@@ -112,7 +112,7 @@ func main() {
 		log.Panic("failed to open .env file")
 	}
 
-	bot_token := os.Getenv("BOT_TOKEN")
+	bot_token := os.Getenv("TG_BOT_TOKEN")
 
 	bot, err := tgbotapi.NewBotAPI(bot_token)
 	if err != nil {
