@@ -15,5 +15,5 @@
 # vendor/
 
 # development files
-app/.env
-app/app
+.env
+main
