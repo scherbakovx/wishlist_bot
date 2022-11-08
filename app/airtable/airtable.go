@@ -8,7 +8,11 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+
+	"github.com/scherbakovx/wishlist_bot/app/utils"
 )
+
+const AirTableURL string = "https://api.airtable.com/v0/appEXUeaG06r5KYBe/Wishlist"
 
 type AirTableImageObject struct {
 	Url string `json:"url"`
@@ -31,7 +35,7 @@ type AirTableObjectsArray struct {
 }
 
 func GetDataFromAirTable(client *http.Client, randomizer *rand.Rand) (string, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.airtable.com/v0/appEXUeaG06r5KYBe/Wishlist", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, AirTableURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -59,18 +63,30 @@ func GetDataFromAirTable(client *http.Client, randomizer *rand.Rand) (string, er
 
 func InsertDataToAirTable(client *http.Client, link string) error {
 
+	openGraphData, _ := utils.GetOGTags(client, link)
+	var imageUrl string
+	if len(openGraphData.Images) > 0 {
+		imageUrl = openGraphData.Images[0].URL
+	}
+
 	newWish := AirTableObjectsArray{
 		Records: []AirTableSingleObject{
 			{
 				Fields: AirTableObjectFields{
-					Link: link,
+					Link: openGraphData.URL,
+					Name: openGraphData.Title,
+					Image: []AirTableImageObject{
+						{
+							Url: imageUrl,
+						},
+					},
 				},
 			},
 		},
 	}
 	marshaledNewWish, _ := json.Marshal(&newWish)
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://api.airtable.com/v0/appEXUeaG06r5KYBe/Wishlist", bytes.NewBuffer(marshaledNewWish))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, AirTableURL, bytes.NewBuffer(marshaledNewWish))
 	if err != nil {
 		return err
 	}

@@ -1,11 +1,15 @@
 package utils
 
 import (
+	"context"
 	crand "crypto/rand"
 	"encoding/binary"
 	"log"
 	"math/rand"
+	"net/http"
 	"regexp"
+
+	"github.com/dyatlov/go-opengraph/opengraph"
 )
 
 func SeedRand() *rand.Rand {
@@ -24,4 +28,23 @@ func GetRegexpObject() *regexp.Regexp {
 		log.Panic(err)
 	}
 	return r
+}
+
+func GetOGTags(client *http.Client, url string) (opengraph.OpenGraph, error) {
+
+	var data opengraph.OpenGraph = *opengraph.NewOpenGraph()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return data, err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return data, err
+	}
+	defer res.Body.Close()
+
+	data.ProcessHTML(res.Body)
+
+	return data, nil
 }

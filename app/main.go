@@ -23,6 +23,8 @@ var client = &http.Client{
 var randomizer *rand.Rand = utils.SeedRand()
 var regexLinkFinder *regexp.Regexp = utils.GetRegexpObject()
 
+const theOnlyWriter int64 = 16803083
+
 func main() {
 
 	err := godotenv.Load()
@@ -54,8 +56,7 @@ func main() {
 		msg.ReplyToMessageID = update.Message.MessageID
 
 		if link := regexLinkFinder.FindString(update.Message.Text); link != "" {
-			fmt.Println("Chat ID", update.Message.Chat.ID)
-			if update.Message.Chat.ID == 16803083 {
+			if update.Message.Chat.ID == theOnlyWriter {
 				err = airtable.InsertDataToAirTable(client, link)
 				if err != nil {
 					msg.Text = "I'm broken"
