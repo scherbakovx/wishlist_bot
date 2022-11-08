@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/scherbakovx/wishlist_bot/app/utils"
@@ -21,14 +23,19 @@ var client = &http.Client{
 
 var randomizer = utils.SeedRand()
 
+type AirTableImageObject struct {
+	Url string `json:"url"`
+}
+
 type AirTableObjectFields struct {
-	Name  string `json:"Name"`
-	Price int    `json:"Price ($)"`
-	Link  string `json:"Link"`
+	Name  string                `json:"Name"`
+	Price int                   `json:"Price ($)"`
+	Link  string                `json:"Link"`
+	Image []AirTableImageObject `json:"Image"`
 }
 
 type AirTableSingleObject struct {
-	Id     string               `json:"id"`
+	Id     string               `json:"id,omitempty"`
 	Fields AirTableObjectFields `json:"fields"`
 }
 
@@ -63,6 +70,41 @@ func getDataFromAirTable() string {
 	return result
 }
 
+func insertDataToAirTable(link string) {
+
+	newObject := AirTableObjectsArray{
+		Records: []AirTableSingleObject{
+			{
+				Fields: AirTableObjectFields{
+					Link: link,
+				},
+			},
+		},
+	}
+	btResult, _ := json.Marshal(&newObject)
+
+	fmt.Println(bytes.NewBuffer(btResult))
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://api.airtable.com/v0/appEXUeaG06r5KYBe/Wishlist", bytes.NewBuffer(btResult))
+	if err != nil {
+		log.Panic(err)
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", os.Getenv("AIRTABLE_TOKEN")))
+	req.Header.Add("Content-Type", "application/json")
+	res, err := client.Do(req)
+	if err != nil {
+		log.Panic(err)
+	}
+	if res.StatusCode != http.StatusOK {
+		panic(fmt.Sprintf("unexpected status: got %v", res.Status))
+	}
+}
+
+func getLinkFromMessage(message string) string {
+	r, _ := regexp.Compile(`(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-&?=%.]+`)
+	return r.FindString(message)
+}
+
 func main() {
 
 	err := godotenv.Load()
@@ -93,7 +135,15 @@ func main() {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 		msg.ReplyToMessageID = update.Message.MessageID
 
-		if update.Message.IsCommand() {
+		if link := getLinkFromMessage(update.Message.Text); link != "" {
+			fmt.Println("Chat ID", update.Message.Chat.ID)
+			if update.Message.Chat.ID == 16803083 {
+				insertDataToAirTable(link)
+				msg.Text = fmt.Sprint("I've added this: ", link)
+			} else {
+				msg.Text = "Sorry, only Anton could add links to his Wishlist"
+			}
+		} else if update.Message.IsCommand() {
 			switch update.Message.Command() {
 			case "get":
 				randomObjectData := getDataFromAirTable()
