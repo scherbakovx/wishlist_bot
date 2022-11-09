@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -26,6 +25,69 @@ var client = &http.Client{
 
 var randomizer *rand.Rand = utils.SeedRand()
 var regexLinkFinder *regexp.Regexp = utils.GetRegexpObject()
+
+const botErrorMessage string = "I'm broken"
+const botSuccessfulMessage string = "Added!"
+
+func handleUserMessage(update tgbotapi.Update, database *gorm.DB, user models.User) (string, error) {
+
+	var answer string
+	var err error
+
+	if link := regexLinkFinder.FindString(update.Message.Text); link != "" {
+		if user.AirTable.Board != "" {
+			err = airtable.InsertDataToAirTable(client, link)
+			if err != nil {
+				return botErrorMessage, err
+			}
+		} else {
+			openGraphData, _ := utils.GetOGTags(client, link)
+			wish := models.LocalWish{
+				Wish: models.Wish{
+					Name: openGraphData.Title,
+					Link: openGraphData.URL,
+				},
+				UserId: user.Id,
+			}
+			result := database.Create(&wish)
+
+			if result.Error != nil {
+				return botErrorMessage, result.Error
+			}
+		}
+		return botSuccessfulMessage, nil
+	} else if update.Message.IsCommand() {
+		switch update.Message.Command() {
+		case "get":
+			if user.AirTable.Board != "" {
+				randomObjectData, err := airtable.GetDataFromAirTable(client, randomizer)
+				if err != nil {
+					return botErrorMessage, err
+				}
+				return randomObjectData, nil
+			} else {
+				var wish models.LocalWish
+				result := database.Clauses(clause.OnConflict{DoNothing: true}).First(&wish)
+
+				if result.Error != nil {
+					if result.Error.Error() == "record not found" {
+						return "User has no wishes :(", nil
+					} else {
+						return botErrorMessage, result.Error
+					}
+				} else {
+					return wish.String(), nil
+				}
+			}
+		default:
+			answer = "I know only /get command"
+		}
+	} else {
+		answer = "I know only /get command"
+	}
+
+	return answer, err
+}
 
 func main() {
 
@@ -64,63 +126,11 @@ func main() {
 		msg := tgbotapi.NewMessage(chatId, "")
 		msg.ReplyToMessageID = update.Message.MessageID
 
-		if link := regexLinkFinder.FindString(update.Message.Text); link != "" {
-			if user.AirTable.Board != "" {
-				err = airtable.InsertDataToAirTable(client, link)
-				if err != nil {
-					msg.Text = "I'm broken"
-				}
-				msg.Text = fmt.Sprint("I've added this: ", link)
-			} else {
-				openGraphData, _ := utils.GetOGTags(client, link)
-				wish := models.LocalWish{
-					Wish: models.Wish{
-						Name: openGraphData.Title,
-						Link: openGraphData.URL,
-					},
-					UserId: user.Id,
-				}
-				result := database.Create(&wish)
-
-				if result.Error != nil {
-					log.Panic(result.Error)
-				}
-
-				msg.Text = "Added to bot local DB!"
-			}
-		} else if update.Message.IsCommand() {
-			switch update.Message.Command() {
-			case "get":
-				if user.AirTable.Board != "" {
-					randomObjectData, err := airtable.GetDataFromAirTable(client, randomizer)
-					if err != nil {
-						msg.Text = "I'm broken"
-					}
-					msg.Text = randomObjectData
-				} else {
-					var wish models.LocalWish
-					result := database.Clauses(clause.OnConflict{DoNothing: true}).First(&wish)
-
-					if result.Error != nil {
-						fmt.Println(result.Error.Error())
-						if result.Error.Error() == "record not found" {
-							msg.Text = "User has no wishes :("
-						} else {
-							log.Panic(result.Error)
-						}
-					} else {
-						msg.Text = wish.String()
-					}
-				}
-
-			default:
-				msg.Text = "I don't know this command"
-			}
-		} else {
-			msg.Text = "I know only /get command"
+		msg.Text, err = handleUserMessage(update, database, *user)
+		if err != nil && msg.Text != botErrorMessage {
+			log.Panic(err)
 		}
 
 		bot.Send(msg)
-
 	}
 }
