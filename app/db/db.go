@@ -8,6 +8,7 @@ import (
 	"github.com/scherbakovx/wishlist_bot/app/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func Init() *gorm.DB {
@@ -23,9 +24,24 @@ func Init() *gorm.DB {
 		log.Fatalln(err)
 	}
 
-	db.AutoMigrate(&models.Wish{})
+	db.AutoMigrate(&models.LocalWish{})
 	db.AutoMigrate(&models.AirTableConnection{})
 	db.AutoMigrate(&models.User{})
 
 	return db
+}
+
+func GetOrCreateUserInDB(db *gorm.DB, chatId int64) (*models.User, error) {
+	user := models.User{ChatId: int64(chatId)}
+	result := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&user)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		db.First(&user, "chat_id = ?", user.ChatId)
+	}
+
+	return &user, nil
 }
