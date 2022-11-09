@@ -11,3 +11,18 @@ services:
       - .:/app
     ports:
       - 4000:4000
+    depends_on:
+      - db
+
+  db:
+    container_name: wishlist-app-db
+    image: postgres:15.0
+    env_file:
+      - .env
+    ports:
+      - 5432:5432
+    volumes:
+      - db:/var/lib/postgresql/data 
+
+volumes:
+  db:
