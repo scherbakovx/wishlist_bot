@@ -1,12 +1,23 @@
 package models
 
+import "fmt"
+
 type Wish struct {
-	Id     int    `json:"id" gorm:"primaryKey"`
-	Name   string `json:"Name"`
-	Price  int    `json:"Price ($)"`
-	Link   string `json:"Link"`
+	Name  string `json:"Name"`
+	Price int    `json:"Price ($)"`
+	Link  string `json:"Link"`
+}
+
+type LocalWish struct {
+	Wish
+	Id     int `json:"id" gorm:"primaryKey"`
 	UserId int
 	User   User
+}
+
+// String returns string-representation of Wish-object
+func (w Wish) String() string {
+	return fmt.Sprintf("Name: %s\nPrice: %d$\nLink: %s", w.Name, w.Price, w.Link)
 }
 
 type AirTableConnection struct {

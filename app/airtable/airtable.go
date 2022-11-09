@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/scherbakovx/wishlist_bot/app/models"
 	"github.com/scherbakovx/wishlist_bot/app/utils"
 )
 
@@ -19,9 +20,7 @@ type AirTableImageObject struct {
 }
 
 type AirTableObjectFields struct {
-	Name  string                `json:"Name"`
-	Price int                   `json:"Price ($)"`
-	Link  string                `json:"Link"`
+	models.Wish
 	Image []AirTableImageObject `json:"Image"`
 }
 
@@ -57,6 +56,7 @@ func GetDataFromAirTable(client *http.Client, randomizer *rand.Rand) (string, er
 	randomIndex := randomizer.Intn(len(objects.Records))
 
 	objectFromWishlist := objects.Records[randomIndex]
+
 	result := fmt.Sprintf("Name: %s\nPrice: %d$\nLink: %s", objectFromWishlist.Fields.Name, objectFromWishlist.Fields.Price, objectFromWishlist.Fields.Link)
 	return result, nil
 }
@@ -73,8 +73,10 @@ func InsertDataToAirTable(client *http.Client, link string) error {
 		Records: []AirTableSingleObject{
 			{
 				Fields: AirTableObjectFields{
-					Link: openGraphData.URL,
-					Name: openGraphData.Title,
+					Wish: models.Wish{
+						Link: openGraphData.URL,
+						Name: openGraphData.Title,
+					},
 					Image: []AirTableImageObject{
 						{
 							Url: imageUrl,

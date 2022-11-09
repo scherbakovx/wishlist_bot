@@ -16,6 +16,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -32,9 +33,9 @@ func main() {
 	if err != nil {
 		log.Panic("failed to open .env file")
 	}
+	var database *gorm.DB = db.Init()
 
 	bot_token := os.Getenv("TG_BOT_TOKEN")
-
 	bot, err := tgbotapi.NewBotAPI(bot_token)
 	if err != nil {
 		log.Panic(err)
@@ -47,27 +48,21 @@ func main() {
 
 	updates := bot.GetUpdatesChan(u)
 
-	DB := db.Init()
-
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
+		chatId := update.Message.Chat.ID
+
+		user, err := db.GetOrCreateUserInDB(database, chatId)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		msg := tgbotapi.NewMessage(chatId, "")
 		msg.ReplyToMessageID = update.Message.MessageID
-
-		user := models.User{ChatId: update.Message.Chat.ID}
-		result := DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&user)
-
-		if result.Error != nil {
-			log.Panic(result.Error)
-		}
-
-		if result.RowsAffected == 0 {
-			DB.First(&user, "chat_id = ?", user.ChatId)
-		}
 
 		if link := regexLinkFinder.FindString(update.Message.Text); link != "" {
 			if user.AirTable.Board != "" {
@@ -78,8 +73,14 @@ func main() {
 				msg.Text = fmt.Sprint("I've added this: ", link)
 			} else {
 				openGraphData, _ := utils.GetOGTags(client, link)
-				wish := models.Wish{Name: openGraphData.Title, Link: openGraphData.URL, UserId: user.Id}
-				result := DB.Create(&wish)
+				wish := models.LocalWish{
+					Wish: models.Wish{
+						Name: openGraphData.Title,
+						Link: openGraphData.URL,
+					},
+					UserId: user.Id,
+				}
+				result := database.Create(&wish)
 
 				if result.Error != nil {
 					log.Panic(result.Error)
@@ -97,14 +98,19 @@ func main() {
 					}
 					msg.Text = randomObjectData
 				} else {
-					var objectData models.Wish
-					result := DB.First(&objectData)
+					var wish models.LocalWish
+					result := database.Clauses(clause.OnConflict{DoNothing: true}).First(&wish)
 
 					if result.Error != nil {
-						log.Panic(result.Error)
+						fmt.Println(result.Error.Error())
+						if result.Error.Error() == "record not found" {
+							msg.Text = "User has no wishes :("
+						} else {
+							log.Panic(result.Error)
+						}
+					} else {
+						msg.Text = wish.String()
 					}
-
-					msg.Text = fmt.Sprintf("Name: %s\nPrice: %d$\nLink: %s", objectData.Name, objectData.Price, objectData.Link)
 				}
 
 			default:
