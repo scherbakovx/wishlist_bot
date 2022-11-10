@@ -35,21 +35,12 @@ func main() {
 
 	for update := range updates {
 
-		chatId := update.Message.Chat.ID
-
-		user, err := db.GetOrCreateUserInDB(database, chatId)
-		if err != nil {
-			log.Panic(err)
-		}
-
 		updateHandler := tghandler.UpdateHandler{
 			Update:   update,
 			Database: database,
 			Bot:      bot,
-			User:     user,
 		}
 
 		updateHandler.HandleAnyMessage()
-
 	}
 }
