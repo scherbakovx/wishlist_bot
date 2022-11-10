@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -59,6 +60,31 @@ func handleUserMessage(update tgbotapi.Update, database *gorm.DB, user models.Us
 	} else if update.Message.IsCommand() {
 		switch update.Message.Command() {
 		case "get":
+			if requestedChatId := update.Message.CommandArguments(); requestedChatId != "" {
+				// TODO: I'm sure I don't need to make two requests here, but need more reading of GORM docs
+				var requestedUser models.User
+				result := database.Clauses(clause.OnConflict{DoNothing: true}).First(&requestedUser, "chat_id = ?", requestedChatId)
+
+				if result.Error != nil {
+					if result.Error.Error() == "record not found" {
+						return fmt.Sprintf("No user with %v chat id", requestedChatId), nil
+					} else {
+						return botErrorMessage, result.Error
+					}
+				}
+
+				var wish models.LocalWish
+				result = database.Clauses(clause.OnConflict{DoNothing: true}).First(&wish, "user_id = ?", requestedUser.Id)
+				if result.Error != nil {
+					if result.Error.Error() == "record not found" {
+						return fmt.Sprintf("User %v has no wishes :(", requestedChatId), nil
+					} else {
+						return botErrorMessage, result.Error
+					}
+				} else {
+					return wish.String(), nil
+				}
+			}
 			if user.AirTable.Board != "" {
 				randomObjectData, err := airtable.GetDataFromAirTable(client, randomizer)
 				if err != nil {
@@ -71,7 +97,7 @@ func handleUserMessage(update tgbotapi.Update, database *gorm.DB, user models.Us
 
 				if result.Error != nil {
 					if result.Error.Error() == "record not found" {
-						return "User has no wishes :(", nil
+						return "You have no wishes :(", nil
 					} else {
 						return botErrorMessage, result.Error
 					}
