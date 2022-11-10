@@ -70,7 +70,7 @@ func handleUserMessage(update tgbotapi.Update, database *gorm.DB, user models.Us
 		case "start":
 			return "Please select, are you gonna add your wished or read others?", nil
 		case "get":
-			if requestedChatId := update.Message.CommandArguments(); requestedChatId != "" {
+			if requestedChatId := user.ReadingUserId; requestedChatId != 0 {
 				// TODO: I'm sure I don't need to make two requests here, but need more reading of GORM docs
 				var requestedUser models.User
 				result := database.Clauses(clause.OnConflict{DoNothing: true}).First(&requestedUser, "chat_id = ?", requestedChatId)
@@ -147,7 +147,33 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		if update.Message != nil {
+		if update.Message.Contact != nil {
+
+			chatId := update.Message.Chat.ID
+
+			msg := tgbotapi.NewMessage(chatId, "")
+			msg.ReplyToMessageID = update.Message.MessageID
+
+			var user models.User
+			result := database.Clauses(clause.OnConflict{DoNothing: true}).First(&user, "chat_id = ?", update.Message.Contact.UserID)
+			if result.Error != nil {
+				if result.Error.Error() == "record not found" {
+					msg.Text = "I don't know this user :("
+				} else {
+					log.Panic(result.Error)
+				}
+			} else {
+
+				var currentUser models.User
+				database.First(&currentUser, "chat_id = ?", chatId)
+				database.Model(&currentUser).Update("reading_user_id", user.ChatId)
+
+				msg.Text = "I know this user! Just tap /get and let's see what he/she wants :)"
+			}
+
+			bot.Send(msg)
+
+		} else if update.Message != nil {
 			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
 			chatId := update.Message.Chat.ID
