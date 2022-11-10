@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/scherbakovx/wishlist_bot/app/airtable"
@@ -29,6 +30,13 @@ var regexLinkFinder *regexp.Regexp = utils.GetRegexpObject()
 
 const botErrorMessage string = "I'm broken"
 const botSuccessfulMessage string = "Added!"
+
+var startKeyboard = tgbotapi.NewInlineKeyboardMarkup(
+	tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Writer", fmt.Sprint(models.Writer)),
+		tgbotapi.NewInlineKeyboardButtonData("Reader", fmt.Sprint(models.Reader)),
+	),
+)
 
 func handleUserMessage(update tgbotapi.Update, database *gorm.DB, user models.User) (string, error) {
 
@@ -59,6 +67,8 @@ func handleUserMessage(update tgbotapi.Update, database *gorm.DB, user models.Us
 		return botSuccessfulMessage, nil
 	} else if update.Message.IsCommand() {
 		switch update.Message.Command() {
+		case "start":
+			return "Please select, are you gonna add your wished or read others?", nil
 		case "get":
 			if requestedChatId := update.Message.CommandArguments(); requestedChatId != "" {
 				// TODO: I'm sure I don't need to make two requests here, but need more reading of GORM docs
@@ -137,26 +147,59 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		if update.Message == nil {
-			continue
+		if update.Message != nil {
+			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+
+			chatId := update.Message.Chat.ID
+
+			user, err := db.GetOrCreateUserInDB(database, chatId)
+			if err != nil {
+				log.Panic(err)
+			}
+
+			msg := tgbotapi.NewMessage(chatId, "")
+			msg.ReplyToMessageID = update.Message.MessageID
+
+			msg.Text, err = handleUserMessage(update, database, *user)
+			if msg.Text == "Please select, are you gonna add your wished or read others?" {
+				msg.ReplyMarkup = startKeyboard
+			}
+			if err != nil && msg.Text != botErrorMessage {
+				log.Panic(err)
+			}
+
+			bot.Send(msg)
+		} else if update.CallbackQuery != nil {
+			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, update.CallbackQuery.Data)
+			if _, err := bot.Request(callback); err != nil {
+				log.Panic(err)
+			}
+
+			chatId := update.CallbackQuery.Message.Chat.ID
+
+			user, err := db.GetOrCreateUserInDB(database, chatId)
+			if err != nil {
+				log.Panic(err)
+			}
+			intUserStatus, err := strconv.Atoi(update.CallbackQuery.Data)
+
+			var answer string
+			if intUserStatus == int(models.Writer) {
+				answer = "Your status is Writer — just send me link and I'll add it to your wishlist!"
+			} else {
+				answer = "Your status is Reader — just send me contact card or nickname and I'll be ready to give you advice :)"
+			}
+
+			if err != nil {
+				log.Panic(err)
+			}
+			user.Status = models.UserStatus(intUserStatus)
+			database.Save(&user)
+
+			msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, answer)
+			if _, err := bot.Send(msg); err != nil {
+				log.Panic(err)
+			}
 		}
-		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-
-		chatId := update.Message.Chat.ID
-
-		user, err := db.GetOrCreateUserInDB(database, chatId)
-		if err != nil {
-			log.Panic(err)
-		}
-
-		msg := tgbotapi.NewMessage(chatId, "")
-		msg.ReplyToMessageID = update.Message.MessageID
-
-		msg.Text, err = handleUserMessage(update, database, *user)
-		if err != nil && msg.Text != botErrorMessage {
-			log.Panic(err)
-		}
-
-		bot.Send(msg)
 	}
 }
