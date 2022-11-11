@@ -4,11 +4,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/scherbakovx/wishlist_bot/app/db"
-	tghandler "github.com/scherbakovx/wishlist_bot/app/tg_handler"
-
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
+	"github.com/scherbakovx/wishlist_bot/app/db"
+	tghandler "github.com/scherbakovx/wishlist_bot/app/tg_handler"
 	"gorm.io/gorm"
 )
 

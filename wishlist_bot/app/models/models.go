@@ -35,10 +35,12 @@ const (
 )
 
 type User struct {
-	Id            int                `gorm:"primaryKey"`
-	ChatId        int64              `gorm:"unique;not null"`
-	AirTable      AirTableConnection `gorm:"embedded"`
-	AirTableId    int
+	Id     int   `gorm:"primaryKey"`
+	ChatId int64 `gorm:"unique;not null"`
+
+	AirTable   AirTableConnection `gorm:"embedded"`
+	AirTableId int
+
 	Status        UserStatus `gorm:"default:0"`
 	ReadingUserId int
 }
