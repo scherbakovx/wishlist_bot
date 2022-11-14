@@ -15,5 +15,4 @@
 # vendor/
 
 # development files
-.docker.env
-wishlist_bot/.env
+.env
