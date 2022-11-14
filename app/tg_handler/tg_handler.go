@@ -1,15 +1,15 @@
 package tghandler
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
-	"math/rand"
 	"net/http"
 	"regexp"
 	"strconv"
 	"time"
 
-	"github.com/scherbakovx/wishlist_bot/app/airtable"
 	"github.com/scherbakovx/wishlist_bot/app/db"
 	"github.com/scherbakovx/wishlist_bot/app/models"
 	"github.com/scherbakovx/wishlist_bot/app/utils"
@@ -23,10 +23,9 @@ var client = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-var regexLinkFinder *regexp.Regexp = utils.GetRegexpObject()
-var randomizer *rand.Rand = utils.SeedRand()
+const apiBaseURL string = "http://api:3000"
 
-const botSuccessfulMessage string = "Added!"
+var regexLinkFinder *regexp.Regexp = utils.GetRegexpObject()
 
 var startKeyboard = tgbotapi.NewInlineKeyboardMarkup(
 	tgbotapi.NewInlineKeyboardRow(
@@ -144,27 +143,27 @@ func (uh UpdateHandler) handleCallbackMessage() {
 }
 
 func (uh UpdateHandler) handleLinkMessage(link string) {
-	if uh.User.AirTable.Board != "" {
-		err := airtable.InsertDataToAirTable(client, link)
-		if err != nil {
-			panic(err)
-		}
-	} else {
-		openGraphData, _ := utils.GetOGTags(client, link)
-		wish := models.LocalWish{
-			Wish: models.Wish{
-				Name: openGraphData.Title,
-				Link: openGraphData.URL,
-			},
-			UserId: uh.User.Id,
-		}
-		result := uh.Database.Create(&wish)
-
-		if result.Error != nil {
-			panic(result.Error)
-		}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, fmt.Sprint(apiBaseURL, "/add_wish_to_user?chat_id=", uh.User.ChatId, "&link=", link), nil)
+	if err != nil {
+		panic(err)
 	}
-	uh.MessageToSend.Text = botSuccessfulMessage
+
+	res, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		panic(res.Status)
+	}
+
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	uh.MessageToSend.Text = string(b)
 }
 
 func (uh UpdateHandler) handleCommandMessage() {
@@ -173,40 +172,27 @@ func (uh UpdateHandler) handleCommandMessage() {
 		uh.MessageToSend.Text = "Please select, are you gonna add your wished or read others?"
 		uh.MessageToSend.ReplyMarkup = startKeyboard
 	case "get":
-		if requestedChatId := uh.User.ReadingUserId; requestedChatId != 0 {
-
-			var wish models.LocalWish
-			result := uh.Database.Clauses(clause.OnConflict{DoNothing: true}).Model(&models.LocalWish{}).Joins("JOIN users ON local_wishes.user_id = users.id").Where("users.chat_id = ?", requestedChatId).First(&wish)
-			if result.Error != nil {
-				if result.Error.Error() == "record not found" {
-					uh.MessageToSend.Text = fmt.Sprintf("User %v has no wishes :(", requestedChatId)
-				} else {
-					panic(result.Error)
-				}
-			} else {
-				uh.MessageToSend.Text = wish.String()
-			}
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, fmt.Sprint(apiBaseURL, "/get_user_wish?user_id=", uh.User.ChatId), nil)
+		if err != nil {
+			panic(err)
 		}
-		if uh.User.AirTable.Board != "" {
-			randomObjectData, err := airtable.GetDataFromAirTable(client, randomizer)
-			if err != nil {
-				panic(err)
-			}
-			uh.MessageToSend.Text = randomObjectData
-		} else {
-			var wish models.LocalWish
-			result := uh.Database.Clauses(clause.OnConflict{DoNothing: true}).First(&wish)
 
-			if result.Error != nil {
-				if result.Error.Error() == "record not found" {
-					uh.MessageToSend.Text = "You have no wishes :("
-				} else {
-					panic(result.Error)
-				}
-			} else {
-				uh.MessageToSend.Text = wish.String()
-			}
+		res, err := client.Do(req)
+		if err != nil {
+			panic(err)
 		}
+
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			panic(res.Status)
+		}
+
+		b, err := io.ReadAll(res.Body)
+		if err != nil {
+			panic(err)
+		}
+
+		uh.MessageToSend.Text = string(b)
 	default:
 		uh.MessageToSend.Text = "I know only /get command"
 	}
